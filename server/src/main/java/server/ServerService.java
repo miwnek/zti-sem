@@ -15,7 +15,7 @@ import jakarta.jms.Destination;
 @Component
 public class ServerService {
 
-    private final JmsTemplate jmsTemplate; // jmsTemplate.setPubSubDomain(true); -> topics as default
+    private final JmsTemplate jmsTemplate; // jmsTemplate.setPubSubDomain(true); -> tematy jako domyślne
     private final ActiveMQTopic evensTopic;
     private final ActiveMQTopic oddsTopic;
     private final Set<String> registeredIds;
@@ -27,7 +27,8 @@ public class ServerService {
         this.registeredIds = ConcurrentHashMap.newKeySet();
     }
 
-    @JmsListener(destination = "client.ids")
+    // Przetwarzanie wiadomości z rejestracją
+    @JmsListener(destination = "client.ids") // domyślnie kolejka
     public void onRegisterRequest(TextMessage message) throws JMSException{
         String clientId = message.getText();
         Destination replyDestination = message.getJMSReplyTo();
@@ -44,10 +45,11 @@ public class ServerService {
             }
         }
 
-        // Send response
+        // Wysyłanie odpowiedzi
         jmsTemplate.send(replyDestination, session -> session.createTextMessage(response));
     }
 
+    // Przetwarzanie wiadomości z derejestracją
     @JmsListener(destination = "client.dereg")
     public void onDeregisterRequest(TextMessage message) throws JMSException {
         String clientId = message.getText();
@@ -58,6 +60,7 @@ public class ServerService {
         }
     }
 
+    // Periodyczne ogłaszanie na temat 'even_ids'
     @Scheduled(fixedRate = 8000)
     public void sendToEvenTopic() {
         String msg = "Message to even IDs @ " + LocalTime.now();
@@ -65,6 +68,7 @@ public class ServerService {
         System.out.println("Sent to even_ids topic: " + msg);
     }
 
+    // Periodyczne ogłaszanie na temat 'odd_ids'
     @Scheduled(initialDelay = 4000, fixedRate = 8000)
     public void sendToOddTopic() {
         String msg = "Message to odd IDs @ " + LocalTime.now();

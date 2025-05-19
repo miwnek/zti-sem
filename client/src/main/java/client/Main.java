@@ -7,39 +7,41 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
         if (args.length == 0) {
-            System.err.println("Please provide your ID as argument");
+            System.err.println("Usage (ID = 0,1,2,...): mvn exec:java -Dexec.mainClass=client.Main -Dexec.args=\"ID\"");
             System.exit(1);
         }
 
         String id = args[0];
         boolean even = Integer.parseInt(id) % 2 == 0;
 
+        // Boilerplate...
         ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory("tcp://localhost:61616");
         try (Connection connection = factory.createConnection()) {
             connection.start();
 
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
 
-            // Prepare request queue and producer
+            // Kolejka do wysłania żądania rejestracji
             Queue requestQueue = session.createQueue("client.ids");
             MessageProducer producer = session.createProducer(requestQueue);
 
-            // Create temporary queue for reply
+            // Tymczasowa kolejka na odpowiedź od serwera
             TemporaryQueue replyQueue = session.createTemporaryQueue();
             MessageConsumer replyConsumer = session.createConsumer(replyQueue);
 
-            // Create and send request message
+            // Wysłanie wiadomości z rejestracją
             TextMessage requestMessage = session.createTextMessage(id);
             requestMessage.setJMSReplyTo(replyQueue);
             producer.send(requestMessage);
 
-            // Wait for reply (timeout 5s)
-            Message reply = replyConsumer.receive(5000);
+            // Czekanie na odpowiedź od serwera (timeout 10s)
+            Message reply = replyConsumer.receive(10000);
             if (reply == null) {
                 System.err.println("No reply received. Exiting.");
                 System.exit(1);
             }
 
+            // Procesowanie odpowiedzi od serwera
             if (reply instanceof TextMessage) {
                 String text = ((TextMessage) reply).getText();
                 if ("TAKEN".equals(text)) {
@@ -47,6 +49,7 @@ public class Main {
                     System.exit(0);
                 } else if ("OK".equals(text)) {
                     System.out.println("ID " + id + " registered successfully.");
+                    // Wysyłanie wiadomości z derejestracją przy wyjściu
                     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                         try {
                             Queue deregQueue = session.createQueue("client.dereg");
@@ -65,7 +68,7 @@ public class Main {
                 }
             }
 
-            // Subscribe to topic based on even/odd
+            // Subskrybcja do tematu even/odd zależnie od id
             Topic topic = session.createTopic(even ? "even_ids" : "odd_ids");
             MessageConsumer consumer = session.createConsumer(topic);
 
@@ -81,7 +84,8 @@ public class Main {
 
             System.out.println("Subscribed to topic: " + (even ? "even_ids" : "odd_ids"));
 
-            // Keep client alive
+            // Zawieszenie wątku egzekucji żeby program się nie skończył
+            // Wiadomości z subskrybcji przetwarzane są asynchronicznie
             System.out.println("Listening for messages. Press Ctrl+C to quit.");
             Thread.sleep(Long.MAX_VALUE);
         }
